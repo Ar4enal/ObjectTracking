@@ -1,0 +1,3 @@
+
+hObjectTrackingSubgraphGpuVIDEO:input_videoDETECTIONS:new_detections"DETECTIONS:tracked_detections
+[RendererSubgraphGpuIMAGE:input_videoDETECTIONS:tracked_detections"IMAGE:output_videoRinput_videoRnew_detectionszoutput_video
