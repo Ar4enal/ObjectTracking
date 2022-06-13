@@ -59,6 +59,7 @@ dependencies {
     }
     implementation 'com.alibaba:fastjson:1.2.51'
     implementation "com.fasterxml.jackson.core:jackson-databind:2.10.1"
+    implementation "org.java-websocket:Java-WebSocket:1.4.0"
     //implementation 'de.javagl:obj:0.3.0'
     //implementation 'androidx.appcompat:appcompat:1.4.0'
     //implementation 'com.google.android.material:material:1.4.0'

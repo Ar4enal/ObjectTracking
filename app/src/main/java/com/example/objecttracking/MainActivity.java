@@ -25,6 +25,10 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
+
+import com.example.objecttracking.webrtc.PeerConnectionAdapter;
+import com.example.objecttracking.webrtc.SdpAdapter;
+import com.example.objecttracking.webrtc.SignalingClient;
 import com.google.mediapipe.components.CameraHelper;
 import com.google.mediapipe.components.CameraXPreviewHelper;
 import com.google.mediapipe.components.ExternalTextureConverter;
@@ -35,11 +39,32 @@ import com.google.mediapipe.framework.AndroidAssetUtil;
 import com.google.mediapipe.framework.Packet;
 import com.google.mediapipe.framework.PacketGetter;
 import com.google.mediapipe.glutil.EglManager;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.json.JSONException;
+import org.webrtc.AudioSource;
+import org.webrtc.AudioTrack;
+import org.webrtc.Camera1Enumerator;
+import org.webrtc.DefaultVideoDecoderFactory;
+import org.webrtc.DefaultVideoEncoderFactory;
+import org.webrtc.EglBase;
+import org.webrtc.IceCandidate;
+import org.webrtc.MediaConstraints;
+import org.webrtc.MediaStream;
+import org.webrtc.PeerConnection;
+import org.webrtc.PeerConnectionFactory;
+import org.webrtc.SessionDescription;
+import org.webrtc.SurfaceTextureHelper;
+import org.webrtc.SurfaceViewRenderer;
+import org.webrtc.VideoCapturer;
+import org.webrtc.VideoSource;
+import org.webrtc.VideoTrack;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** Main activity of MediaPipe basic app. */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SignalingClient.Callback{
     private static final String TAG = "MainActivity";
 
     // Flips the camera-preview frames vertically by default, before sending them into FrameProcessor
@@ -57,6 +82,10 @@ public class MainActivity extends AppCompatActivity {
     // FlowLimiterCalculator options). That's because we need buffers for all the frames that are in
     // flight/queue plus one for the next frame from the camera.
     private static final int NUM_BUFFERS = 2;
+
+    PeerConnectionFactory peerConnectionFactory;
+    PeerConnection peerConnection;
+    MediaStream mediaStream;
 
     static {
         // Load all native libraries needed by the app.
@@ -93,6 +122,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(getContentViewLayoutResId());
+        EglBase.Context eglBaseContext = EglBase.create().getEglBaseContext();
 
         try {
             applicationInfo =
@@ -140,6 +170,50 @@ public class MainActivity extends AppCompatActivity {
                                     + "] "
                                     + multiDetections);
                 });
+
+        // create PeerConnectionFactory
+        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions
+                .builder(this)
+                .createInitializationOptions());
+        PeerConnectionFactory.Options options = new PeerConnectionFactory.Options();
+        DefaultVideoEncoderFactory defaultVideoEncoderFactory =
+                new DefaultVideoEncoderFactory(eglBaseContext, true, true);
+        DefaultVideoDecoderFactory defaultVideoDecoderFactory =
+                new DefaultVideoDecoderFactory(eglBaseContext);
+        peerConnectionFactory = PeerConnectionFactory.builder()
+                .setOptions(options)
+                .setVideoEncoderFactory(defaultVideoEncoderFactory)
+                .setVideoDecoderFactory(defaultVideoDecoderFactory)
+                .createPeerConnectionFactory();
+
+        SurfaceTextureHelper surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", eglBaseContext);
+        // create VideoCapturer
+        VideoCapturer videoCapturer = createCameraCapturer(false);
+        VideoSource videoSource = peerConnectionFactory.createVideoSource(videoCapturer.isScreencast());
+        videoCapturer.initialize(surfaceTextureHelper, getApplicationContext(), videoSource.getCapturerObserver());
+        videoCapturer.startCapture(480, 640, 30);
+
+        // create VideoTrack
+        VideoTrack videoTrack = peerConnectionFactory.createVideoTrack("100", videoSource);
+
+        AudioSource audioSource = peerConnectionFactory.createAudioSource(new MediaConstraints());
+        AudioTrack audioTrack = peerConnectionFactory.createAudioTrack("101", audioSource);
+
+        mediaStream = peerConnectionFactory.createLocalMediaStream("mediaStream");
+        mediaStream.addTrack(videoTrack);
+        mediaStream.addTrack(audioTrack);
+
+        SignalingClient.get().setCallback(this);
+        call();
+    }
+
+    private void call() {
+        List<PeerConnection.IceServer> iceServers = new ArrayList<>();
+        iceServers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
+        peerConnection = peerConnectionFactory.createPeerConnection(iceServers, new PeerConnectionAdapter("localconnection") {
+        });
+
+        peerConnection.addStream(mediaStream);
     }
 
     // Used to obtain the content view for this application. If you are extending this class, and
@@ -161,6 +235,24 @@ public class MainActivity extends AppCompatActivity {
         if (PermissionHelper.cameraPermissionsGranted(this)) {
             startCamera();
         }
+    }
+
+    private VideoCapturer createCameraCapturer(boolean isFront) {
+        Camera1Enumerator enumerator = new Camera1Enumerator(false);
+        final String[] deviceNames = enumerator.getDeviceNames();
+
+        // First, try to find front facing camera
+        for (String deviceName : deviceNames) {
+            if (isFront ? enumerator.isFrontFacing(deviceName) : enumerator.isBackFacing(deviceName)) {
+                VideoCapturer videoCapturer = enumerator.createCapturer(deviceName, null);
+
+                if (videoCapturer != null) {
+                    return videoCapturer;
+                }
+            }
+        }
+
+        return null;
     }
 
     @Override
@@ -194,9 +286,7 @@ public class MainActivity extends AppCompatActivity {
         cameraHelper = new CameraXPreviewHelper();
         previewFrameTexture = converter.getSurfaceTexture();
         cameraHelper.setOnCameraStartedListener(
-                surfaceTexture -> {
-                    onCameraStarted(surfaceTexture);
-                });
+                this::onCameraStarted);
         CameraHelper.CameraFacing cameraFacing =
                 applicationInfo.metaData.getBoolean("cameraFacingFront", false)
                         ? CameraHelper.CameraFacing.FRONT
@@ -248,5 +338,29 @@ public class MainActivity extends AppCompatActivity {
                                 processor.getVideoSurfaceOutput().setSurface(null);
                             }
                         });
+    }
+
+    @Override
+    public void onSelfJoined() {
+        peerConnection.createOffer(new SdpAdapter("local offer sdp") {
+            @Override
+            public void onCreateSuccess(SessionDescription sessionDescription) {
+                super.onCreateSuccess(sessionDescription);
+                peerConnection.setLocalDescription(new SdpAdapter("local set local"), sessionDescription);
+                try {
+                    SignalingClient.get().sendOfferSessionDescription(sessionDescription);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, new MediaConstraints());
+    }
+
+    @Override
+    public void onAnswerReceived(JSONObject data) {
+        Log.d("onAnswerReceived",data.optString("sdp"));
+        peerConnection.setRemoteDescription(new SdpAdapter("localSetRemote"),
+                new SessionDescription(SessionDescription.Type.ANSWER, data.optString("sdp")));
+
     }
 }
