@@ -9,6 +9,7 @@ import org.webrtc.IceCandidate;
 import org.webrtc.SessionDescription;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
 import okhttp3.MediaType;
@@ -38,8 +39,14 @@ public class SignalingClient {
     }
 
     private Callback callback;
-    private final OkHttpClient client = new OkHttpClient();
-    private final String url ="ws://" + "37.18.4.44" + ":8080";
+    //private final OkHttpClient client = new OkHttpClient();
+    private OkHttpClient client = new OkHttpClient.Builder()
+            .retryOnConnectionFailure(true)//允许失败重试
+            .readTimeout(5, TimeUnit.SECONDS)//设置读取超时时间
+            .writeTimeout(5, TimeUnit.SECONDS)//设置写的超时时间
+            .connectTimeout(5, TimeUnit.SECONDS)//设置连接超时时间
+            .build();
+    private final String url ="ws://37.18.4.44:8080/ws";
     private WebSocket mWebSocket;
 
 
@@ -50,7 +57,6 @@ public class SignalingClient {
     private void init() {
         Request request = new Request.Builder().get().url(url).build();
         mWebSocket = client.newWebSocket(request, new SocketListener());
-        callback.onSelfJoined();
     }
 
     public void sendOfferSessionDescription(SessionDescription sdp) throws JSONException {
@@ -59,12 +65,13 @@ public class SignalingClient {
         offer_jo.put("type", "offer");
         offer_jo.put("sdp", sdp.description);
         jo.put("event", "offer");
-        jo.put("data", offer_jo);
+        jo.put("data",String.valueOf( offer_jo));
 
         sendMessage(String.valueOf(jo));
     }
 
     public void sendMessage(String message){
+        Log.i("websocket_send_offer", message);
         mWebSocket.send(message);
     }
 
@@ -75,6 +82,7 @@ public class SignalingClient {
         public void onOpen(WebSocket webSocket, Response response) {
             super.onOpen(webSocket, response);
             Log.i(TAG,"onOpen response="+response);
+            callback.onSelfJoined();
         }
 
         @Override
@@ -82,9 +90,10 @@ public class SignalingClient {
             super.onMessage(webSocket, text);
             Log.i(TAG,"onMessage text="+text);
             try {
-                JSONObject jsonObject = new JSONObject(text);
-                if (jsonObject.getString("type").equals("answer")){
-                    callback.onAnswerReceived(jsonObject.getJSONObject("data"));
+                JSONObject message = new JSONObject(text);
+                if (message.getString("event").equals("answer")){
+                    JSONObject jsonObject = new JSONObject(message.getString("data"));
+                    callback.onAnswerReceived(jsonObject);
                 }
             } catch (JSONException e) {
                 e.printStackTrace();

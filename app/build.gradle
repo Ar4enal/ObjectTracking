@@ -8,7 +8,7 @@ android {
     defaultConfig {
         applicationId "com.example.objecttracking"
         minSdk 21
-        targetSdk 31
+        targetSdk 27
         versionCode 1
         versionName "1.0"
 
@@ -52,7 +52,7 @@ dependencies {
     implementation "androidx.camera:camera-lifecycle:$camerax_version"
 
     implementation 'org.webrtc:google-webrtc:1.0.30039'
-    implementation 'com.squareup.okhttp3:okhttp:3.6.0'
+    implementation 'com.squareup.okhttp3:okhttp:3.10.0'
     implementation('io.socket:socket.io-client:0.8.3') {
         // excluding org.json which is provided by Android
         exclude group: 'org.json', module: 'json'

@@ -124,6 +124,22 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
         setContentView(getContentViewLayoutResId());
         EglBase.Context eglBaseContext = EglBase.create().getEglBaseContext();
 
+        // create PeerConnectionFactory
+        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions
+                .builder(this)
+                .createInitializationOptions());
+        PeerConnectionFactory.Options options = new PeerConnectionFactory.Options();
+        DefaultVideoEncoderFactory defaultVideoEncoderFactory =
+                new DefaultVideoEncoderFactory(eglBaseContext, true, true);
+        DefaultVideoDecoderFactory defaultVideoDecoderFactory =
+                new DefaultVideoDecoderFactory(eglBaseContext);
+        peerConnectionFactory = PeerConnectionFactory.builder()
+                .setOptions(options)
+                .setVideoEncoderFactory(defaultVideoEncoderFactory)
+                .setVideoDecoderFactory(defaultVideoDecoderFactory)
+                .createPeerConnectionFactory();
+        SurfaceTextureHelper surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", eglBaseContext);
+
         try {
             applicationInfo =
                     getPackageManager().getApplicationInfo(getPackageName(), PackageManager.GET_META_DATA);
@@ -171,24 +187,8 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                                     + multiDetections);
                 });
 
-        // create PeerConnectionFactory
-        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions
-                .builder(this)
-                .createInitializationOptions());
-        PeerConnectionFactory.Options options = new PeerConnectionFactory.Options();
-        DefaultVideoEncoderFactory defaultVideoEncoderFactory =
-                new DefaultVideoEncoderFactory(eglBaseContext, true, true);
-        DefaultVideoDecoderFactory defaultVideoDecoderFactory =
-                new DefaultVideoDecoderFactory(eglBaseContext);
-        peerConnectionFactory = PeerConnectionFactory.builder()
-                .setOptions(options)
-                .setVideoEncoderFactory(defaultVideoEncoderFactory)
-                .setVideoDecoderFactory(defaultVideoDecoderFactory)
-                .createPeerConnectionFactory();
-
-        SurfaceTextureHelper surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", eglBaseContext);
         // create VideoCapturer
-        VideoCapturer videoCapturer = createCameraCapturer(false);
+        VideoCapturer videoCapturer = createCameraCapturer(true);
         VideoSource videoSource = peerConnectionFactory.createVideoSource(videoCapturer.isScreencast());
         videoCapturer.initialize(surfaceTextureHelper, getApplicationContext(), videoSource.getCapturerObserver());
         videoCapturer.startCapture(480, 640, 30);
@@ -211,6 +211,15 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
         List<PeerConnection.IceServer> iceServers = new ArrayList<>();
         iceServers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
         peerConnection = peerConnectionFactory.createPeerConnection(iceServers, new PeerConnectionAdapter("localconnection") {
+            @Override
+            public void onIceCandidate(IceCandidate iceCandidate) {
+                super.onIceCandidate(iceCandidate);
+            }
+
+            @Override
+            public void onAddStream(MediaStream mediaStream) {
+                super.onAddStream(mediaStream);
+            }
         });
 
         peerConnection.addStream(mediaStream);
@@ -251,7 +260,6 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                 }
             }
         }
-
         return null;
     }
 
