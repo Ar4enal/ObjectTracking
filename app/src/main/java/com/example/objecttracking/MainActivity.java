@@ -188,7 +188,7 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                 });
 
         // create VideoCapturer
-        VideoCapturer videoCapturer = createCameraCapturer(true);
+        VideoCapturer videoCapturer = createCameraCapturer(false);
         VideoSource videoSource = peerConnectionFactory.createVideoSource(videoCapturer.isScreencast());
         videoCapturer.initialize(surfaceTextureHelper, getApplicationContext(), videoSource.getCapturerObserver());
         videoCapturer.startCapture(480, 640, 30);
