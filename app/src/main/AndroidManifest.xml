@@ -31,7 +31,7 @@
         </activity>
 
         <meta-data android:name="cameraFacingFront" android:value="false"/>
-        <meta-data android:name="binaryGraphName" android:value="mobile_gpu.binarypb"/>
+        <meta-data android:name="binaryGraphName" android:value="mobile_receiver.binarypb"/>
         <meta-data android:name="inputVideoStreamName" android:value="input_video"/>
         <meta-data android:name="inputDetectionStreamName" android:value="new_detections"/>
         <meta-data android:name="outputVideoStreamName" android:value="output_video"/>
@@ -40,5 +40,4 @@
 
 
     </application>
-
 </manifest>

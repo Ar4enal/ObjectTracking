@@ -13,12 +13,20 @@ package com.example.objecttracking;
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.graphics.SurfaceTexture;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import androidx.appcompat.app.AppCompatActivity;
+
+import android.os.IBinder;
 import android.util.Log;
 import android.util.Size;
 import android.view.SurfaceHolder;
@@ -39,6 +47,8 @@ import com.google.mediapipe.framework.AndroidAssetUtil;
 import com.google.mediapipe.framework.Packet;
 import com.google.mediapipe.framework.PacketGetter;
 import com.google.mediapipe.glutil.EglManager;
+import com.google.protobuf.MessageLite;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONException;
@@ -60,6 +70,9 @@ import org.webrtc.VideoCapturer;
 import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -117,6 +130,7 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
 
     // ApplicationInfo for retrieving metadata defined in the manifest.
     private ApplicationInfo applicationInfo;
+    //private UdpClientBiz udpClientBiz = new UdpClientBiz();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -166,29 +180,42 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                 .setFlipY(
                         applicationInfo.metaData.getBoolean("flipFramesVertically", FLIP_FRAMES_VERTICALLY));
 
+/*        udpClientBiz.sendMsg("client send message", new UdpClientBiz.OnMsgReturnedListener() {
+            @Override
+            public void onMsgReturned(String msg) {
+                //收到的信息
+                Log.i(TAG,"receive: "+msg+"\n");
+            }
+
+            @Override
+            public void onError(Exception ex) {
+                ex.printStackTrace();//有错误打印出错误
+            }
+        });
+*/
         //接收检测结果，转换为packet
-        //Packet packet = processor.getPacketCreator().createProto();
+        //Packet packet = processor.getPacketCreator().createProto(recvDetecions);
         //添加检测结果至graph
         //processor.getGraph().addPacketToInputStream(applicationInfo.metaData.getString("inputDetectionStreamName"), packet, System.currentTimeMillis());
 
         PermissionHelper.checkAndRequestCameraPermissions(this);
 
-        processor.addPacketCallback(
+ /*       processor.addPacketCallback(
                 "tracked_detections",
-                (packet) -> {
+                (tracked_packet) -> {
                     Log.v(TAG, "Received detections packet.");
                     List<DetectionProto.Detection> multiDetections =
-                            PacketGetter.getProtoVector(packet, DetectionProto.Detection.parser());
+                            PacketGetter.getProtoVector(tracked_packet, DetectionProto.Detection.parser());
                     Log.v(
                             TAG,
                             "[TS:"
-                                    + packet.getTimestamp()
+                                    + tracked_packet.getTimestamp()
                                     + "] "
                                     + multiDetections);
                 });
-
+*/
         // create VideoCapturer
-        VideoCapturer videoCapturer = createCameraCapturer(false);
+        VideoCapturer videoCapturer = createCameraCapturer(false); //false后置，true前置
         VideoSource videoSource = peerConnectionFactory.createVideoSource(videoCapturer.isScreencast());
         videoCapturer.initialize(surfaceTextureHelper, getApplicationContext(), videoSource.getCapturerObserver());
         videoCapturer.startCapture(480, 640, 30);
@@ -272,6 +299,12 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
         previewDisplayView.setVisibility(View.GONE);
     }
 
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+    }
+
     @Override
     public void onRequestPermissionsResult(
             int requestCode, String[] permissions, int[] grantResults) {
@@ -348,7 +381,7 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                         });
     }
 
-    @Override
+   @Override
     public void onSelfJoined() {
         peerConnection.createOffer(new SdpAdapter("local offer sdp") {
             @Override
