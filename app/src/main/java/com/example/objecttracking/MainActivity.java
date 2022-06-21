@@ -55,6 +55,7 @@ import org.json.JSONException;
 import org.webrtc.AudioSource;
 import org.webrtc.AudioTrack;
 import org.webrtc.Camera1Enumerator;
+import org.webrtc.Camera2Enumerator;
 import org.webrtc.DefaultVideoDecoderFactory;
 import org.webrtc.DefaultVideoEncoderFactory;
 import org.webrtc.EglBase;
@@ -74,6 +75,7 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /** Main activity of MediaPipe basic app. */
@@ -130,7 +132,8 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
 
     // ApplicationInfo for retrieving metadata defined in the manifest.
     private ApplicationInfo applicationInfo;
-    //private UdpClientBiz udpClientBiz = new UdpClientBiz();
+
+    private UdpClientBiz udpClientBiz = new UdpClientBiz();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -180,7 +183,7 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                 .setFlipY(
                         applicationInfo.metaData.getBoolean("flipFramesVertically", FLIP_FRAMES_VERTICALLY));
 
-/*        udpClientBiz.sendMsg("client send message", new UdpClientBiz.OnMsgReturnedListener() {
+        udpClientBiz.sendMsg("client send message", new UdpClientBiz.OnMsgReturnedListener() {
             @Override
             public void onMsgReturned(String msg) {
                 //收到的信息
@@ -192,7 +195,7 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                 ex.printStackTrace();//有错误打印出错误
             }
         });
-*/
+
         //接收检测结果，转换为packet
         //Packet packet = processor.getPacketCreator().createProto(recvDetecions);
         //添加检测结果至graph
@@ -200,20 +203,6 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
 
         PermissionHelper.checkAndRequestCameraPermissions(this);
 
- /*       processor.addPacketCallback(
-                "tracked_detections",
-                (tracked_packet) -> {
-                    Log.v(TAG, "Received detections packet.");
-                    List<DetectionProto.Detection> multiDetections =
-                            PacketGetter.getProtoVector(tracked_packet, DetectionProto.Detection.parser());
-                    Log.v(
-                            TAG,
-                            "[TS:"
-                                    + tracked_packet.getTimestamp()
-                                    + "] "
-                                    + multiDetections);
-                });
-*/
         // create VideoCapturer
         VideoCapturer videoCapturer = createCameraCapturer(false); //false后置，true前置
         VideoSource videoSource = peerConnectionFactory.createVideoSource(videoCapturer.isScreencast());
@@ -232,6 +221,37 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
 
         SignalingClient.get().setCallback(this);
         call();
+
+
+        converter =
+                new ExternalTextureConverter(
+                        eglManager.getContext(),
+                        applicationInfo.metaData.getInt("converterNumBuffers", NUM_BUFFERS));
+        converter.setFlipY(
+                applicationInfo.metaData.getBoolean("flipFramesVertically", FLIP_FRAMES_VERTICALLY));
+        converter.setConsumer(processor);
+        if (PermissionHelper.cameraPermissionsGranted(this)) {
+            Log.d("testcamera", "mediapipe");
+            cameraHelper = new CameraXPreviewHelper();
+            converter.setSurfaceTexture(surfaceTextureHelper.getSurfaceTexture(), 480, 640);
+            previewFrameTexture = converter.getSurfaceTexture();
+            previewDisplayView.setVisibility(View.VISIBLE);
+        }
+
+        processor.addPacketCallback(
+                "tracked_detections",
+                (tracked_packet) -> {
+                    Log.v(TAG, "Received detections packet.");
+                    List<DetectionProto.Detection> multiDetections =
+                            PacketGetter.getProtoVector(tracked_packet, DetectionProto.Detection.parser());
+                    Log.v(
+                            TAG,
+                            "[TS:"
+                                    + tracked_packet.getTimestamp()
+                                    + "] "
+                                    + multiDetections);
+                });
+
     }
 
     private void call() {
@@ -261,7 +281,7 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
     @Override
     protected void onResume() {
         super.onResume();
-        converter =
+        /*converter =
                 new ExternalTextureConverter(
                         eglManager.getContext(),
                         applicationInfo.metaData.getInt("converterNumBuffers", NUM_BUFFERS));
@@ -270,18 +290,18 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
         converter.setConsumer(processor);
         if (PermissionHelper.cameraPermissionsGranted(this)) {
             startCamera();
-        }
+        }*/
     }
 
     private VideoCapturer createCameraCapturer(boolean isFront) {
         Camera1Enumerator enumerator = new Camera1Enumerator(false);
         final String[] deviceNames = enumerator.getDeviceNames();
-
+        //Log.d("devices", Arrays.toString(deviceNames));
         // First, try to find front facing camera
         for (String deviceName : deviceNames) {
             if (isFront ? enumerator.isFrontFacing(deviceName) : enumerator.isBackFacing(deviceName)) {
                 VideoCapturer videoCapturer = enumerator.createCapturer(deviceName, null);
-
+                Log.d("testcamera","webrtc");
                 if (videoCapturer != null) {
                     return videoCapturer;
                 }
@@ -323,7 +343,7 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
         return null; // No preference and let the camera (helper) decide.
     }
 
-    public void startCamera() {
+/*    public void startCamera() {
         cameraHelper = new CameraXPreviewHelper();
         previewFrameTexture = converter.getSurfaceTexture();
         cameraHelper.setOnCameraStartedListener(
@@ -334,7 +354,7 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                         : CameraHelper.CameraFacing.BACK;
         cameraHelper.startCamera(
                 this, cameraFacing, previewFrameTexture, cameraTargetResolution());
-    }
+    }*/
 
     protected Size computeViewSize(int width, int height) {
         return new Size(width, height);
@@ -371,7 +391,14 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
 
                             @Override
                             public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-                                onPreviewDisplaySurfaceChanged(holder, format, width, height);
+                                Log.d(TAG, "surfaceChanged");
+                                //onPreviewDisplaySurfaceChanged(holder, format, width, height);
+
+                                //Size viewSize = new Size(width, height);
+                                //Log.d("compute", String.valueOf(viewSize)); //1080 1995
+                                //Size displaySize = cameraHelper.computeDisplaySizeFromViewSize(viewSize);
+                                //converter.setSurfaceTextureAndAttachToGLContext(
+                                //        previewFrameTexture, 1080, 1995);
                             }
 
                             @Override
