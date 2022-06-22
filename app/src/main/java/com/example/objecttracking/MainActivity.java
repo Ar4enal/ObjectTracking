@@ -26,6 +26,7 @@ import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
 import android.util.Size;
@@ -47,7 +48,15 @@ import com.google.mediapipe.framework.AndroidAssetUtil;
 import com.google.mediapipe.framework.Packet;
 import com.google.mediapipe.framework.PacketGetter;
 import com.google.mediapipe.glutil.EglManager;
+import com.google.protobuf.AbstractMessageLite;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.CodedInputStream;
+import com.google.protobuf.CodedOutputStream;
+import com.google.protobuf.ExtensionRegistryLite;
+import com.google.protobuf.GeneratedMessageLite;
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
+import com.google.protobuf.Parser;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -72,6 +81,8 @@ import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.util.ArrayList;
@@ -183,24 +194,6 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                 .setFlipY(
                         applicationInfo.metaData.getBoolean("flipFramesVertically", FLIP_FRAMES_VERTICALLY));
 
-        udpClientBiz.sendMsg("client send message", new UdpClientBiz.OnMsgReturnedListener() {
-            @Override
-            public void onMsgReturned(String msg) {
-                //收到的信息
-                Log.i(TAG,"receive: "+msg+"\n");
-            }
-
-            @Override
-            public void onError(Exception ex) {
-                ex.printStackTrace();//有错误打印出错误
-            }
-        });
-
-        //接收检测结果，转换为packet
-        //Packet packet = processor.getPacketCreator().createProto(recvDetecions);
-        //添加检测结果至graph
-        //processor.getGraph().addPacketToInputStream(applicationInfo.metaData.getString("inputDetectionStreamName"), packet, System.currentTimeMillis());
-
         PermissionHelper.checkAndRequestCameraPermissions(this);
 
         // create VideoCapturer
@@ -251,7 +244,6 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
                                     + "] "
                                     + multiDetections);
                 });
-
     }
 
     private void call() {
@@ -291,6 +283,41 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
         if (PermissionHelper.cameraPermissionsGranted(this)) {
             startCamera();
         }*/
+
+        Log.d(TAG,"udpClientBiz.sendMsg");
+        socketConnect("client");
+    }
+
+    private void socketConnect(String msg){
+        udpClientBiz.sendMsg(msg, new UdpClientBiz.OnMsgReturnedListener() {
+            @Override
+            public void onMsgReturned(byte[] recvMsg) {
+                //收到的信息
+                Log.i(TAG,"receive: "+ Arrays.toString(recvMsg) +"\n");
+                //Log.i(TAG,"receive: "+ Arrays.toString(recvMsg).length() +"\n");
+                Packet packet = null;
+                String msg = new String(recvMsg).substring(0,2);
+                if (!msg.equals("no")) {
+                    try {
+                        DetectionProto.Detection recviveDetections = DetectionProto.Detection.parseFrom(recvMsg, ExtensionRegistryLite.getEmptyRegistry());
+                        //接收检测结果，转换为packet
+                        packet = processor.getPacketCreator().createSerializedProto(recviveDetections);
+                        //添加检测结果至graph
+                        processor.getGraph().addPacketToInputStream(
+                                applicationInfo.metaData.getString("inputDetectionStreamName"),
+                                packet,
+                                System.currentTimeMillis());
+
+                    } catch (InvalidProtocolBufferException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+            @Override
+            public void onError(Exception ex) {
+                ex.printStackTrace();//有错误打印出错误
+            }
+        });
     }
 
     private VideoCapturer createCameraCapturer(boolean isFront) {
@@ -429,6 +456,5 @@ public class MainActivity extends AppCompatActivity implements SignalingClient.C
         Log.d("onAnswerReceived",data.optString("sdp"));
         peerConnection.setRemoteDescription(new SdpAdapter("localSetRemote"),
                 new SessionDescription(SessionDescription.Type.ANSWER, data.optString("sdp")));
-
     }
 }
